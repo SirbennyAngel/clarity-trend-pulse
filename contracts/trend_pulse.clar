@@ -2,6 +2,7 @@
 (define-constant ERR-NOT-AUTHORIZED (err u100))
 (define-constant ERR-INVALID-TREND (err u101))
 (define-constant ERR-ALREADY-VOTED (err u102))
+(define-constant ERR-CATEGORY-FULL (err u103))
 
 ;; Data variables
 (define-data-var next-trend-id uint u0)
@@ -15,6 +16,8 @@
     description: (string-ascii 200),
     creator: principal,
     votes: uint,
+    upvotes: uint,
+    downvotes: uint,
     created-at: uint,
     is-active: bool
   }
@@ -58,6 +61,8 @@
     description: description,
     creator: creator,
     votes: u0,
+    upvotes: u0,
+    downvotes: u0,
     created-at: block-height,
     is-active: true
   })
@@ -65,12 +70,25 @@
 )
 
 (define-private (record-vote (trend-id uint) (vote-up bool) (voter principal))
-  (map-set user-votes { user: voter, trend-id: trend-id } vote-up)
-  (ok true)
+  (let (
+    (trend (unwrap! (get-trend trend-id) ERR-INVALID-TREND))
+    (current-votes (get votes trend))
+    (current-upvotes (get upvotes trend))
+    (current-downvotes (get downvotes trend))
+  )
+    (map-set user-votes { user: voter, trend-id: trend-id } vote-up)
+    (map-set trends trend-id (merge trend {
+      votes: (+ current-votes u1),
+      upvotes: (if vote-up (+ current-upvotes u1) current-upvotes),
+      downvotes: (if vote-up current-downvotes (+ current-downvotes u1))
+    }))
+    (ok true)
+  )
 )
 
 (define-private (add-to-category (category (string-ascii 20)) (trend-id uint))
   (let ((current-trends (default-to (list) (map-get? category-trends category))))
+    (asserts! (< (len current-trends) u50) ERR-CATEGORY-FULL)
     (map-set category-trends category (append current-trends trend-id))
     (ok true)
   )
